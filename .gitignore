@@ -1,0 +1,11 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+
+# Signing material never goes in git — CI gets it from repository secrets
+keystore/*.jks
+keystore/keystore.properties
