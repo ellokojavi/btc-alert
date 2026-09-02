@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple "B" glyph with bars -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,28h4v-6h6v6h4v-6h6v6.3c7.2,1 12,5.5 12,12.2c0,4.4-2.2,7.6-5.6,9.4c4.6,1.6,7.6,5.3,7.6,10.6c0,7.9-6,12.9-15,13.5V80h-6v-6H56v6h-6v-6h-8v-8h5V36h-5V28zM53,36v11h7c4.4,0,7-2.1,7-5.5c0-3.4-2.6-5.5-7-5.5H53zM53,54v12h8.5c4.9,0,7.5-2.3,7.5-6s-2.6-6-7.5-6H53z" />
+</vector>
