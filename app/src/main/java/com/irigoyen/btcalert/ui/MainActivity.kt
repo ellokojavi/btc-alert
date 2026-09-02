@@ -20,6 +20,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -397,10 +398,11 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
 private fun changePct(state: AppState, last: com.irigoyen.btcalert.model.PriceSample?, h: Horizon): Double? {
     if (last == null) return null
     val target = last.time - h.millis
-    val local = AlertEngine.referenceSample(state.history.dropLast(1), target)
-    // Prefer the chart series' first point when we have it, so pill and chart always agree.
+    // The chart series is the source of truth when we have it, so the pill and the chart's
+    // baseline always tell the same story; local samples and the cached ref are fallbacks.
     val chartRef = state.charts[h.name]?.points?.firstOrNull()?.price
-    val refPrice = local?.price ?: chartRef ?: state.historical[h.name]?.price ?: return null
+    val local = AlertEngine.referenceSample(state.history.dropLast(1), target)?.price
+    val refPrice = chartRef ?: local ?: state.historical[h.name]?.price ?: return null
     return (last.price - refPrice) / refPrice * 100.0
 }
 
@@ -436,6 +438,9 @@ private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.P
         val measurer = rememberTextMeasurer()
         val hiText = remember(maxP) { "H ${usd(maxP)}" }
         val loText = remember(minP) { "L ${usd(minP)}" }
+        // The y-axis is zoomed to min..max, so a 0.2%-wide window fills the whole box. Saying how
+        // wide the window is stops a flat timeframe from looking like a crash.
+        val spanText = remember(minP, maxP) { "span ${fmtChange((maxP - minP) / minP * 100).removePrefix("+")}" }
 
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
@@ -466,6 +471,15 @@ private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.P
                 lineTo(x(t1), h); lineTo(x(t0), h); close()
             }
 
+            // Dashed baseline at the opening price: the visual zero for this timeframe.
+            val yOpen = y(first)
+            val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 6.dp.toPx()), 0f)
+            drawLine(
+                color = Ink.Outline,
+                start = Offset(0f, yOpen), end = Offset(w, yOpen),
+                strokeWidth = 1.dp.toPx(), pathEffect = dash,
+            )
+
             val revealW = w * reveal.value
             clipRect(right = revealW) {
                 drawPath(
@@ -488,6 +502,8 @@ private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.P
             val lo = measurer.measure(loText, labelStyle)
             drawText(hi, topLeft = Offset(0f, 0f))
             drawText(lo, topLeft = Offset(0f, h - lo.size.height))
+            val sp = measurer.measure(spanText, labelStyle)
+            drawText(sp, topLeft = Offset(w - sp.size.width - padRight, h - sp.size.height))
         }
     }
 }
