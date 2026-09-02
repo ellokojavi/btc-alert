@@ -26,13 +26,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Restore signing keystore from secrets
-        if: ${{ secrets.KEYSTORE_B64 != '' }}
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "No KEYSTORE_B64 secret — release APK will be unsigned"; exit 0; fi
           mkdir -p keystore
           echo "$KEYSTORE_B64" | base64 -d > keystore/btcalert.jks
           printf 'storePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore/keystore.properties
