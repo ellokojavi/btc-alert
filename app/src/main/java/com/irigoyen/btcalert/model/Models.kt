@@ -61,6 +61,8 @@ data class Settings(
     val quietHoursEnabled: Boolean = false,
     val quietStartHour: Int = 23,
     val quietEndHour: Int = 7,
+    /** Timeframe selected for the home-screen chart ([Horizon.name]). */
+    val chartHorizon: String = Horizon.D1.name,
 )
 
 /** Look-back horizons shown as change pills on the home screen. */
@@ -79,6 +81,10 @@ enum class Horizon(val label: String, val minutes: Long) {
 @Serializable
 data class RefPrice(val time: Long, val price: Double, val fetchedAt: Long)
 
+/** A price series for the chart: candle closes over one [Horizon], oldest first. */
+@Serializable
+data class ChartSeries(val points: List<PriceSample>, val fetchedAt: Long)
+
 @Serializable
 data class AppState(
     val rules: List<AlertRule> = emptyList(),
@@ -86,6 +92,8 @@ data class AppState(
     val history: List<PriceSample> = emptyList(),
     /** Keyed by [Horizon.name]; filled lazily, refreshed every ~30 min. */
     val historical: Map<String, RefPrice> = emptyMap(),
+    /** Chart data keyed by [Horizon.name]; fetched on demand for the selected timeframe. */
+    val charts: Map<String, ChartSeries> = emptyMap(),
     val settings: Settings = Settings(),
     val lastError: String? = null,
     val log: List<String> = emptyList(),

@@ -13,8 +13,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import com.irigoyen.btcalert.data.ChartData
+import com.irigoyen.btcalert.model.ChartSeries
+import com.irigoyen.btcalert.model.usd
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -134,6 +148,26 @@ fun App() {
         }
     }
 
+    // Chart data for the selected timeframe: fetch when missing/stale, re-check every 30 s.
+    val chartHorizon = Horizon.entries.firstOrNull { it.name == state.settings.chartHorizon } ?: Horizon.D1
+    LaunchedEffect(chartHorizon) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                if (ChartData.isStale(store.state.value.charts[chartHorizon.name], chartHorizon, now)) {
+                    try {
+                        val series = ChartData.fetch(chartHorizon, now)
+                        store.update { it.copy(charts = it.charts + (chartHorizon.name to series)) }
+                    } catch (_: Exception) { }
+                }
+                delay(30_000)
+            }
+        }
+    }
+    val onSelectHorizon: (Horizon) -> Unit = { h ->
+        scope.launch { store.update { it.copy(settings = it.settings.copy(chartHorizon = h.name)) } }
+    }
+
     val refreshNow: () -> Unit = {
         scope.launch {
             refreshing = true
@@ -149,6 +183,8 @@ fun App() {
     when (screen) {
         Screen.HOME -> HomeScreen(
             state = state,
+            chartHorizon = chartHorizon,
+            onSelectHorizon = onSelectHorizon,
             refreshing = refreshing,
             onRefresh = refreshNow,
             onAdd = { editing = null; showEditor = true },
@@ -204,6 +240,8 @@ private val dayTimeFmt = SimpleDateFormat("EEE HH:mm", Locale.US)
 @Composable
 private fun HomeScreen(
     state: AppState,
+    chartHorizon: Horizon,
+    onSelectHorizon: (Horizon) -> Unit,
     refreshing: Boolean,
     onRefresh: () -> Unit,
     onAdd: () -> Unit,
@@ -248,7 +286,7 @@ private fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item { Header(onLog, onSettings) }
-                item { PriceHero(state) }
+                item { PriceHero(state, chartHorizon, onSelectHorizon) }
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 2.dp),
@@ -296,7 +334,7 @@ private fun Header(onLog: () -> Unit, onSettings: () -> Unit) {
 }
 
 @Composable
-private fun PriceHero(state: AppState) {
+private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (Horizon) -> Unit) {
     val last = state.history.lastOrNull()
     val target = last?.price?.toFloat() ?: 0f
     val animated by animateFloatAsState(targetValue = target, animationSpec = tween(700), label = "price")
@@ -318,11 +356,25 @@ private fun PriceHero(state: AppState) {
             style = MaterialTheme.typography.displayLarge,
             color = tickColor,
         )
+        Spacer(Modifier.height(16.dp))
+        PriceChart(
+            series = state.charts[chartHorizon.name],
+            live = last,
+            horizon = chartHorizon,
+            modifier = Modifier.fillMaxWidth().height(150.dp),
+        )
         Spacer(Modifier.height(12.dp))
         // Six equal-width pills on one line; each gets weight(1f) so they can never wrap or overflow.
+        // Tapping one selects the chart timeframe.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Horizon.entries.forEach { h ->
-                ChangeChip(h.label, changePct(state, last, h), Modifier.weight(1f))
+                ChangeChip(
+                    label = h.label,
+                    pct = changePct(state, last, h),
+                    selected = h == chartHorizon,
+                    onClick = { onSelectHorizon(h) },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -346,8 +398,98 @@ private fun changePct(state: AppState, last: com.irigoyen.btcalert.model.PriceSa
     if (last == null) return null
     val target = last.time - h.millis
     val local = AlertEngine.referenceSample(state.history.dropLast(1), target)
-    val refPrice = local?.price ?: state.historical[h.name]?.price ?: return null
+    // Prefer the chart series' first point when we have it, so pill and chart always agree.
+    val chartRef = state.charts[h.name]?.points?.firstOrNull()?.price
+    val refPrice = local?.price ?: chartRef ?: state.historical[h.name]?.price ?: return null
     return (last.price - refPrice) / refPrice * 100.0
+}
+
+/**
+ * Smooth line chart of a [ChartSeries] with the live price appended as the final point.
+ * Colour follows the direction over the timeframe; the path animates in when the timeframe changes.
+ */
+@Composable
+private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.PriceSample?, horizon: Horizon, modifier: Modifier = Modifier) {
+    val points = remember(series, live) {
+        val base = series?.points.orEmpty()
+        if (live != null && (base.isEmpty() || live.time > base.last().time)) base + live else base
+    }
+    val reveal = remember(horizon) { Animatable(0f) }
+    LaunchedEffect(horizon, series == null) {
+        if (series != null) { reveal.snapTo(0f); reveal.animateTo(1f, tween(650)) }
+    }
+
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (points.size < 2) {
+            Text(
+                if (series == null) "Loading ${horizon.label} chart…" else "Not enough data",
+                style = MaterialTheme.typography.bodySmall, color = Ink.Faint,
+            )
+            return@Box
+        }
+        val first = points.first().price
+        val lastP = points.last().price
+        val lineColor = if (lastP >= first) Ink.Up else Ink.Down
+        val minP = points.minOf { it.price }
+        val maxP = points.maxOf { it.price }
+        val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Ink.Faint, letterSpacing = 0.sp)
+        val measurer = rememberTextMeasurer()
+        val hiText = remember(maxP) { "H ${usd(maxP)}" }
+        val loText = remember(minP) { "L ${usd(minP)}" }
+
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val padTop = 14.dp.toPx()
+            val padBottom = 14.dp.toPx()
+            val padRight = 4.dp.toPx()
+            val t0 = points.first().time
+            val t1 = points.last().time
+            val span = (t1 - t0).coerceAtLeast(1L).toFloat()
+            val range = (maxP - minP).let { if (it <= 0.0) maxP * 0.01 else it }
+            fun x(t: Long) = (t - t0) / span * (w - padRight)
+            fun y(p: Double) = padTop + ((maxP - p) / range).toFloat() * (h - padTop - padBottom)
+
+            // Smooth path: cubic segments with horizontal control points at the x-midpoint.
+            // Monotone (no overshoot), reads as a curve even at 60–300 points.
+            val line = Path().apply {
+                moveTo(x(points[0].time), y(points[0].price))
+                for (i in 1 until points.size) {
+                    val px = x(points[i - 1].time); val py = y(points[i - 1].price)
+                    val cx = x(points[i].time); val cy = y(points[i].price)
+                    val mx = (px + cx) / 2f
+                    cubicTo(mx, py, mx, cy, cx, cy)
+                }
+            }
+            val fill = Path().apply {
+                addPath(line)
+                lineTo(x(t1), h); lineTo(x(t0), h); close()
+            }
+
+            val revealW = w * reveal.value
+            clipRect(right = revealW) {
+                drawPath(
+                    fill,
+                    brush = Brush.verticalGradient(
+                        0f to lineColor.copy(alpha = 0.28f), 1f to lineColor.copy(alpha = 0f),
+                        startY = padTop, endY = h,
+                    ),
+                )
+                drawPath(line, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            if (reveal.value >= 1f) {
+                val ex = x(t1); val ey = y(lastP)
+                drawCircle(lineColor.copy(alpha = 0.25f), radius = 7.dp.toPx(), center = Offset(ex, ey))
+                drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(ex, ey))
+                drawCircle(Ink.Black, radius = 1.2.dp.toPx(), center = Offset(ex, ey))
+            }
+            // High / low labels, tucked into the corners so they never collide with the line ends.
+            val hi = measurer.measure(hiText, labelStyle)
+            val lo = measurer.measure(loText, labelStyle)
+            drawText(hi, topLeft = Offset(0f, 0f))
+            drawText(lo, topLeft = Offset(0f, h - lo.size.height))
+        }
+    }
 }
 
 /** Compact, fixed-width-friendly percent: +4.2%  −12.8%  +156%  +1.2k% */
@@ -363,19 +505,23 @@ private fun fmtChange(pct: Double): String {
 }
 
 @Composable
-private fun ChangeChip(label: String, pct: Double?, modifier: Modifier = Modifier) {
+private fun ChangeChip(label: String, pct: Double?, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val color = when {
         pct == null -> Ink.Faint
         pct >= 0 -> Ink.Up
         else -> Ink.Down
     }
+    val bg by animateColorAsState(if (selected) Ink.SurfaceHigh else Ink.Surface, tween(200), label = "chipBg")
+    val border by animateColorAsState(if (selected) Ink.White.copy(alpha = 0.6f) else Color.Transparent, tween(200), label = "chipBorder")
     Column(
         modifier
-            .background(Ink.Surface, RoundedCornerShape(14.dp))
+            .background(bg, RoundedCornerShape(14.dp))
+            .border(1.dp, border, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Ink.Muted, maxLines = 1, softWrap = false)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (selected) Ink.White else Ink.Muted, maxLines = 1, softWrap = false)
         Spacer(Modifier.height(2.dp))
         Text(
             if (pct == null) "—" else fmtChange(pct),
