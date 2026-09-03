@@ -95,7 +95,8 @@ data class AppState(
     /** Chart data keyed by [Horizon.name]; fetched on demand for the selected timeframe. */
     val charts: Map<String, ChartSeries> = emptyMap(),
     val settings: Settings = Settings(),
-    val lastError: String? = null,
+    /** Why the last fetch failed, or null after any success. See [classifyFetchError]. */
+    val lastFetchError: FetchError? = null,
     val log: List<String> = emptyList(),
 )
 

@@ -27,7 +27,9 @@ class Store private constructor(context: Context) {
     private fun load(): AppState = try {
         if (file.exists()) json.decodeFromString<AppState>(file.readText()) else AppState()
     } catch (e: Exception) {
-        AppState(lastError = "State file unreadable, started fresh: ${e.message}")
+        // Not a fetch failure, so it doesn't belong in the price hero — the log screen is where
+        // someone would go looking after their rules vanished.
+        AppState(log = listOf("State file unreadable, started fresh: ${e.message}"))
     }
 
     suspend fun update(block: (AppState) -> AppState): AppState = mutex.withLock {

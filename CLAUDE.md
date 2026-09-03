@@ -30,7 +30,10 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
 - `data/Store.kt` — one JSON file (`filesDir/state.json`), mutex-guarded, exposed as a
   `StateFlow<AppState>`. All writes go through `store.update { }`. No Room, no DataStore.
 - `data/PriceFetcher.kt` — spot price, four keyless sources tried in order
-  (Coinbase → CoinGecko → Kraken → Binance). Add sources here, not at call sites.
+  (Coinbase → CoinGecko → Kraken → Binance). Add sources here, not at call sites. Each failure is
+  a `SourceFailure` carrying whether it was a transport error (no reply) or a bad reply.
+- `data/Connectivity.kt` — the device's `NetworkStatus`; the only Android piece of offline handling.
+  `model/FetchError.kt` holds the pure `classifyFetchError()` that turns it into user-facing copy.
 - `data/ChartData.kt` / `data/HistoricalPrices.kt` — Coinbase Exchange candles.
 - `ui/` — Compose. `Theme.kt` owns the palette (`Ink`); the app is always dark and does
   **not** use dynamic color. `MainActivity.kt` is home + settings + log; the rule editor
@@ -66,6 +69,12 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
   chart baseline can never disagree. Local samples are the fallback.
 - **Price history is thinned**, not capped naively: every sample from the last 10 min,
   then one per minute, 48 h max. 10 s polling would otherwise blow the cap in ~11 h.
+- **Offline is a state, not an error.** With no active network `PriceChecker.runOnce()` doesn't
+  attempt the four requests at all — it records `FetchErrorKind.OFFLINE` and returns. Nothing needs
+  to schedule a retry: WorkManager's `CONNECTED` constraint, the real-time loop and the app's 10 s
+  foreground tick all come back around on their own. `NetworkStatus.UNVALIDATED` (captive portal)
+  still gets a fetch attempt; it only changes the wording. Never surface raw source errors in the
+  hero — they go to `FetchError.detail` and the log screen.
 - **Samsung/One UI** kills background work aggressively; battery-optimization exemption
   plus "Never sleeping apps" is the documented workaround. Real-time mode is a foreground
   service with `specialUse` type — the manifest property explaining why is required by

@@ -2,7 +2,11 @@ package com.irigoyen.btcalert.data
 
 import android.content.Context
 import com.irigoyen.btcalert.engine.AlertEngine
+import com.irigoyen.btcalert.model.FetchErrorKind
+import com.irigoyen.btcalert.model.NetworkStatus
 import com.irigoyen.btcalert.model.PriceSample
+import com.irigoyen.btcalert.model.SourceFailure
+import com.irigoyen.btcalert.model.classifyFetchError
 import com.irigoyen.btcalert.notify.Notifier
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -21,10 +25,31 @@ object PriceChecker {
 
     suspend fun runOnce(context: Context): PriceSample? {
         val store = Store.get(context)
+        val network = Connectivity.status(context)
+
+        // With no network there is nothing to try: four requests would each fail on DNS, waking the
+        // radio for nothing. WorkManager's CONNECTED constraint, the real-time loop and the app's
+        // 10 s foreground tick all come back around on their own once there's a connection again.
+        if (network == NetworkStatus.NONE) {
+            val now = System.currentTimeMillis()
+            val prev = store.state.value.lastFetchError
+            // Re-serialising state.json every 10 s for the whole time a phone is offline would be
+            // pure disk churn: refresh the timestamp once a minute, which is finer than the "last
+            // price N min ago" line it feeds.
+            if (prev == null || prev.kind != FetchErrorKind.OFFLINE || now - prev.at >= 60_000L) {
+                store.update { it.copy(lastFetchError = classifyFetchError(network, emptyList(), now)) }
+            }
+            return null
+        }
+
         val sample = try {
             PriceFetcher.fetch()
         } catch (e: Exception) {
-            store.update { it.copy(lastError = "${logFmt.format(Date())}: ${e.message}") }
+            val failures = (e as? PriceFetcher.AllSourcesFailed)?.failures
+                ?: listOf(SourceFailure("fetch", e.message ?: e.javaClass.simpleName, transport = false))
+            // Re-read connectivity: dropping mid-attempt is the ordinary way this fails.
+            val err = classifyFetchError(Connectivity.status(context), failures, System.currentTimeMillis())
+            store.update { it.copy(lastFetchError = err) }
             return null
         }
 
@@ -40,7 +65,7 @@ object PriceChecker {
             s.copy(
                 history = AlertEngine.trimHistory(s.history + sample, sample.time),
                 ruleStates = result.states,
-                lastError = null,
+                lastFetchError = null,
                 log = newLog.take(100),
             )
         }

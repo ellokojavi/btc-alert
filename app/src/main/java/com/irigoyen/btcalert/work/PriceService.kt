@@ -28,11 +28,9 @@ class PriceService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Notifier.ensureChannels(this)
-        val last = Store.get(this).state.value.history.lastOrNull()
-        val text = last?.let { "BTC ${usd2(it.price)}" } ?: "BTC monitor starting…"
         startForeground(
             Notifier.SERVICE_NOTIFICATION_ID,
-            Notifier.serviceNotification(this, text),
+            Notifier.serviceNotification(this, statusText()),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
         if (loop?.isActive != true) startLoop()
@@ -44,18 +42,28 @@ class PriceService : Service() {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "btcalert:poll").apply { acquire() }
         loop = scope.launch {
             while (isActive) {
-                val sample = PriceChecker.runOnce(this@PriceService)
-                if (sample != null) {
-                    Notifier.safeNotify(
-                        this@PriceService,
-                        Notifier.SERVICE_NOTIFICATION_ID,
-                        Notifier.serviceNotification(this@PriceService, "BTC ${usd2(sample.price)}"),
-                    )
-                }
+                PriceChecker.runOnce(this@PriceService)
+                // Always refresh the notification, including after a failure: a persistent
+                // notification showing a price with no hint that it's hours stale is worse
+                // than no notification at all.
+                Notifier.safeNotify(
+                    this@PriceService,
+                    Notifier.SERVICE_NOTIFICATION_ID,
+                    Notifier.serviceNotification(this@PriceService, statusText()),
+                )
                 val sec = Store.get(this@PriceService).state.value.settings.realtimeIntervalSec.coerceIn(15, 3600)
                 delay(sec * 1000L)
             }
         }
+    }
+
+    /** Live price, or the last one plus why it stopped moving. */
+    private fun statusText(): String {
+        val state = Store.get(this).state.value
+        val price = state.history.lastOrNull()?.let { "BTC ${usd2(it.price)}" }
+        val err = state.lastFetchError ?: return price ?: "BTC monitor starting…"
+        val reason = if (err.kind.isConnectivity) "no connection" else "prices unavailable"
+        return if (price != null) "$price · $reason" else "BTC monitor · $reason"
     }
 
     override fun onDestroy() {

@@ -30,6 +30,8 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 **Quiet hours** — silence notifications overnight; snoozes still count down so you don't get a burst in the morning.
 
+**Offline** — losing signal isn't treated as a crash. The app says *No internet connection*, tells you how old the price on screen is, and picks up by itself the moment you're back; it doesn't burn battery retrying into a dead radio. A Wi-Fi that's connected but doesn't actually reach the internet gets its own message. The per-source technical detail lives on the alert-log screen if you ever want it.
+
 ## Install
 
 1. Download the APK from the [latest release](https://github.com/ellokojavi/btc-alert/releases/latest) on your phone.
@@ -75,7 +77,9 @@ Create a keystore with `keytool -genkeypair -keystore btcalert.jks -alias btcale
 app/src/main/java/com/irigoyen/btcalert/
   model/Models.kt           AlertRule, Settings, PriceSample, Horizon, AppState (JSON-serializable)
   engine/AlertEngine.kt     pure rule logic: crossings, % moves, periodic, snooze, quiet hours, previews
+  model/FetchError.kt       pure classification of a failed fetch into what to tell the user
   data/PriceFetcher.kt      spot price from four free APIs with fallback
+  data/Connectivity.kt      device network state: offline / no internet / online
   data/HistoricalPrices.kt  7d/30d/1y/5y reference prices from Coinbase Exchange hourly candles
   data/ChartData.kt         chart series per timeframe (granularity chosen for ~150–300 points)
   data/Store.kt             single-file JSON persistence + StateFlow for the UI
@@ -89,6 +93,7 @@ app/src/main/java/com/irigoyen/btcalert/
   ui/MainActivity.kt        home (pull-to-refresh, live price, pills), settings, alert log
   ui/RuleEditorDialog.kt    add / edit / test a rule
 app/src/test/…/AlertEngineTest.kt   JVM tests for the engine
+app/src/test/…/FetchErrorTest.kt    JVM tests for the offline/error classification
 ```
 
 Stack: Kotlin, Jetpack Compose (Material 3), WorkManager, OkHttp, kotlinx.serialization. minSdk 31, targetSdk 35.

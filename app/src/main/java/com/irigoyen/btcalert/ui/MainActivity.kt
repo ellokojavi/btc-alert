@@ -28,7 +28,9 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.irigoyen.btcalert.data.ChartData
+import com.irigoyen.btcalert.data.Connectivity
 import com.irigoyen.btcalert.model.ChartSeries
+import com.irigoyen.btcalert.model.FetchError
 import com.irigoyen.btcalert.model.usd
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,9 +54,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -155,7 +159,9 @@ fun App() {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 val now = System.currentTimeMillis()
-                if (ChartData.isStale(store.state.value.charts[chartHorizon.name], chartHorizon, now)) {
+                if (!Connectivity.isOffline(ctx) &&
+                    ChartData.isStale(store.state.value.charts[chartHorizon.name], chartHorizon, now)
+                ) {
                     try {
                         val series = ChartData.fetch(chartHorizon, now)
                         store.update { it.copy(charts = it.charts + (chartHorizon.name to series)) }
@@ -362,6 +368,7 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             series = state.charts[chartHorizon.name],
             live = last,
             horizon = chartHorizon,
+            offline = state.lastFetchError?.kind?.isConnectivity == true,
             modifier = Modifier.fillMaxWidth().height(150.dp),
         )
         Spacer(Modifier.height(12.dp))
@@ -379,15 +386,54 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             }
         }
         Spacer(Modifier.height(14.dp))
+        val err = state.lastFetchError
         val status = when {
-            last == null -> "Fetching first price…"
-            else -> "${last.source} · ${timeFmt.format(Date(last.time))} · ${state.settings.pollMode.label}"
+            last != null -> "${last.source} · ${timeFmt.format(Date(last.time))} · ${state.settings.pollMode.label}"
+            err != null -> "No price yet"
+            else -> "Fetching first price…"
         }
         Text(status, style = MaterialTheme.typography.bodySmall, color = Ink.Faint)
-        state.lastError?.let {
-            Spacer(Modifier.height(4.dp))
-            Text("Last fetch failed — $it", style = MaterialTheme.typography.bodySmall, color = Ink.Down)
+        if (err != null) {
+            Spacer(Modifier.height(10.dp))
+            ConnectionBanner(err, last)
         }
+    }
+}
+
+/**
+ * A failed fetch is a normal part of carrying a phone around, so it gets a calm card saying what
+ * happened and how old the price on screen is — not a red line of hostname errors. The per-source
+ * detail stays available on the log screen for when it's actually wanted.
+ */
+@Composable
+private fun ConnectionBanner(err: FetchError, last: com.irigoyen.btcalert.model.PriceSample?) {
+    Row(
+        Modifier.fillMaxWidth().background(Ink.Surface, MaterialTheme.shapes.small).padding(14.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            if (err.kind.isConnectivity) Icons.Default.WifiOff else Icons.Default.CloudOff,
+            contentDescription = null, tint = Ink.Accent, modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(err.kind.headline, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(2.dp))
+            val hint = if (last == null) err.kind.hint
+            else "${err.kind.hint} Last price ${ago(err.at - last.time)}."
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = Ink.Muted)
+        }
+    }
+}
+
+/** Coarse on purpose: "just now", "4 min ago", "3 h ago", "2 d ago". */
+private fun ago(ms: Long): String {
+    val d = ms.coerceAtLeast(0L)
+    return when {
+        d < 60_000L -> "just now"
+        d < 3_600_000L -> "${d / 60_000L} min ago"
+        d < 86_400_000L -> "${d / 3_600_000L} h ago"
+        else -> "${d / 86_400_000L} d ago"
     }
 }
 
@@ -411,7 +457,13 @@ private fun changePct(state: AppState, last: com.irigoyen.btcalert.model.PriceSa
  * Colour follows the direction over the timeframe; the path animates in when the timeframe changes.
  */
 @Composable
-private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.PriceSample?, horizon: Horizon, modifier: Modifier = Modifier) {
+private fun PriceChart(
+    series: ChartSeries?,
+    live: com.irigoyen.btcalert.model.PriceSample?,
+    horizon: Horizon,
+    offline: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val points = remember(series, live) {
         val base = series?.points.orEmpty()
         if (live != null && (base.isEmpty() || live.time > base.last().time)) base + live else base
@@ -424,7 +476,11 @@ private fun PriceChart(series: ChartSeries?, live: com.irigoyen.btcalert.model.P
     Box(modifier, contentAlignment = Alignment.Center) {
         if (points.size < 2) {
             Text(
-                if (series == null) "Loading ${horizon.label} chart…" else "Not enough data",
+                when {
+                    series != null -> "Not enough data"
+                    offline -> "Chart unavailable offline"
+                    else -> "Loading ${horizon.label} chart…"
+                },
                 style = MaterialTheme.typography.bodySmall, color = Ink.Faint,
             )
             return@Box
@@ -626,6 +682,24 @@ private fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun LogScreen(state: AppState, onBack: () -> Unit) {
     SubScreen("Alert log", onBack) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp)) {
+            state.lastFetchError?.let { err ->
+                item {
+                    Column(Modifier.padding(bottom = 18.dp)) {
+                        SectionLabel("Connection")
+                        Spacer(Modifier.height(6.dp))
+                        Text(err.kind.headline, style = MaterialTheme.typography.bodyMedium, color = Ink.Accent)
+                        if (err.detail.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(err.detail, style = MaterialTheme.typography.bodySmall, color = Ink.Muted)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Last attempt ${dayTimeFmt.format(Date(err.at))}",
+                            style = MaterialTheme.typography.bodySmall, color = Ink.Faint,
+                        )
+                    }
+                }
+            }
             if (state.log.isEmpty()) item { Text("Nothing has fired yet.", color = Ink.Muted) }
             items(state.log) { line ->
                 Text(line, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 10.dp))
