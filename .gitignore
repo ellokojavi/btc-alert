@@ -9,3 +9,6 @@ local.properties
 # Signing material never goes in git — CI gets it from repository secrets
 keystore/*.jks
 keystore/keystore.properties
+
+# Claude Code local state (settings.json IS tracked, on purpose)
+.claude/settings.local.json

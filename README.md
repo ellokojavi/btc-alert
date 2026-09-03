@@ -67,6 +67,8 @@ Create a keystore with `keytool -genkeypair -keystore btcalert.jks -alias btcale
 
 **Command line:** JDK 17+ and an Android SDK with platform 35, then `./gradlew testReleaseUnitTest assembleRelease`.
 
+**With Claude Code:** `git clone` the repo, `cd` into it and run `claude`. [`CLAUDE.md`](CLAUDE.md) carries the architecture, invariants and release process, so a fresh session starts with the project's context already loaded.
+
 ## Code map
 
 ```
