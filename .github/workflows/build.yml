@@ -40,6 +40,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew testReleaseUnitTest --no-daemon
 
+      # assembleRelease only runs lintVital (fatal-severity issues). CLAUDE.md holds the project
+      # to zero lint errors, so check the full set here rather than discovering drift locally.
+      - name: Lint
+        run: ./gradlew lintRelease --no-daemon
+
       - name: Build release APK
         run: ./gradlew assembleRelease --no-daemon
 
