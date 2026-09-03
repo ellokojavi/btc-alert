@@ -1,6 +1,7 @@
 package com.irigoyen.btcalert.data
 
 import com.irigoyen.btcalert.model.PriceSample
+import com.irigoyen.btcalert.model.SourceFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -9,7 +10,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.InterruptedIOException
+import java.net.SocketException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 /**
  * Fetches the BTC/USD spot price from free, keyless public endpoints, in order,
@@ -42,10 +47,15 @@ object PriceFetcher {
         },
     )
 
-    class AllSourcesFailed(val errors: List<String>) : Exception(errors.joinToString("; "))
+    class AllSourcesFailed(val failures: List<SourceFailure>) :
+        Exception(failures.joinToString("; ") { "${it.source}: ${it.message}" })
+
+    /** True when the request never reached a server, as opposed to returning something unusable. */
+    private fun isTransport(e: Exception): Boolean =
+        e is UnknownHostException || e is SocketException || e is InterruptedIOException || e is SSLException
 
     suspend fun fetch(): PriceSample = withContext(Dispatchers.IO) {
-        val errors = mutableListOf<String>()
+        val failures = mutableListOf<SourceFailure>()
         for (s in sources) {
             try {
                 val req = Request.Builder().url(s.url).header("User-Agent", "btcalert-personal/1.0").build()
@@ -56,9 +66,9 @@ object PriceFetcher {
                     return@withContext PriceSample(System.currentTimeMillis(), price, s.name)
                 }
             } catch (e: Exception) {
-                errors += "${s.name}: ${e.message ?: e.javaClass.simpleName}"
+                failures += SourceFailure(s.name, e.message ?: e.javaClass.simpleName, isTransport(e))
             }
         }
-        throw AllSourcesFailed(errors)
+        throw AllSourcesFailed(failures)
     }
 }
