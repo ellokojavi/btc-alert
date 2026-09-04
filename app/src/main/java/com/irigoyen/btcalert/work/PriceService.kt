@@ -1,5 +1,6 @@
 package com.irigoyen.btcalert.work
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -26,6 +27,9 @@ class PriceService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // FOREGROUND_SERVICE_TYPE_SPECIAL_USE is API 34 and inlined at compile time; the manifest
+    // declares the same type, which is what older platforms read it from.
+    @SuppressLint("InlinedApi")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Notifier.ensureChannels(this)
         startForeground(
@@ -39,9 +43,15 @@ class PriceService : Service() {
 
     private fun startLoop() {
         val pm = getSystemService(PowerManager::class.java)
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "btcalert:poll").apply { acquire() }
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "btcalert:poll")
+            .apply { setReferenceCounted(false) }
         loop = scope.launch {
             while (isActive) {
+                val sec = Store.get(this@PriceService).state.value.settings.realtimeIntervalSec.coerceIn(15, 3600)
+                // Re-armed every pass rather than held open for the life of the service: an untimed
+                // wakelock survives a service that dies badly and drains the battery with nothing
+                // running. Two intervals of headroom so a slow fetch can't drop it mid-poll.
+                wakeLock?.acquire((sec * 2 + 60) * 1000L)
                 PriceChecker.runOnce(this@PriceService)
                 // Always refresh the notification, including after a failure: a persistent
                 // notification showing a price with no hint that it's hours stale is worse
@@ -51,7 +61,6 @@ class PriceService : Service() {
                     Notifier.SERVICE_NOTIFICATION_ID,
                     Notifier.serviceNotification(this@PriceService, statusText()),
                 )
-                val sec = Store.get(this@PriceService).state.value.settings.realtimeIntervalSec.coerceIn(15, 3600)
                 delay(sec * 1000L)
             }
         }

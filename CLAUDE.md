@@ -84,6 +84,16 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
   plus "Never sleeping apps" is the documented workaround. Real-time mode is a foreground
   service with `specialUse` type — the manifest property explaining why is required by
   Android 14+.
+- **The androidx versions are pinned by AGP 8.7.3 / compileSdk 35, not by neglect.** `lintRelease`
+  reports five `GradleDependency` warnings; the versions it suggests (core-ktx 1.19, activity-compose
+  1.13, lifecycle 2.11, work 2.11.2) require **compileSdk 37 and AGP 9.1+**. Upgrading is a toolchain
+  migration with a `targetSdk` bump attached, not a dependency bump — don't start it casually, and
+  don't bump to intermediate versions either: lint compares against the newest release, so the
+  warnings stay regardless.
+- **The four remaining lint suppressions are deliberate**, each with its reason in a comment:
+  `InlinedApi` ×3 (API 33/34 constants that inline harmlessly at minSdk 31) and `BatteryLife` (a Play
+  Store policy that doesn't apply to a sideloaded app whose whole job needs the exemption). Lint is at
+  zero errors and zero warnings other than `GradleDependency`; keep it that way.
 - **GitHub Actions:** the `secrets` context is not allowed in a step-level `if:`. Check
   inside the shell instead (this silently produced "No jobs were run").
 
