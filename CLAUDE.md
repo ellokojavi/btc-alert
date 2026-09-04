@@ -65,6 +65,11 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
 - **Coinbase candles cap at 300 per request.** `ChartData` chunks accordingly. Granularity
   per timeframe targets ~150–300 points: 1h→60 s, 24h→300 s, 7d→3600 s, 30d→21600 s,
   1y→86400 s, 5y→86400 s keeping 1 in 7. Only 60/300/900/3600/21600/86400 are valid.
+- **Polling aliases the market.** Alerts see discrete samples; the market is continuous. A
+  2-minute spike through a level is missed ~87% of the time by 15-minute polling — this
+  actually happened at $82k. `IntervalExtremes` fetches the exchange high/low for the gap
+  between samples and cross rules test against those, so detection no longer depends on the
+  poll interval. Only requested when a cross rule is armed and the gap ≥ 90 s.
 - **Change pills read the chart series' first point** when it exists, so a pill and the
   chart baseline can never disagree. Local samples are the fallback.
 - **Price history is thinned**, not capped naively: every sample from the last 10 min,

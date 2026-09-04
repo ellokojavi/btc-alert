@@ -12,10 +12,12 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 | Rule | Fires when |
 |---|---|
-| **Above** `$L` | the previous check was below `L` and this one is at or above it |
-| **Below** `$L` | the previous check was above `L` and this one is at or below it |
+| **Above** `$L` | the price was below `L` and has since reached `L` — including a spike that happened between two checks |
+| **Below** `$L` | the price was above `L` and has since reached `L` — including a dip between two checks |
 | **% move** | the price differs by ≥ `X`% from what it was `N` minutes ago (up, down, or either) |
 | **Check-in** | every `N` minutes, a quiet notification with the current price |
+
+**No missed spikes** — polling only sees the price at each check, so a brief spike through your level could otherwise slip between two of them. On each check the app also asks the exchange for the high and low since the last one, so a two-minute move through $82,000 still notifies you ("Peaked at $82,283 · back to $81,600") even in battery-saver mode.
 
 **Snooze** — every rule has its own snooze in minutes. After it fires, it stays silent until that many minutes have passed, no matter how many times the price wobbles back and forth across the line. That's the whole point of the app: the alert you asked for, once, not twenty times.
 

@@ -17,10 +17,19 @@ data class Firing(val rule: AlertRule, val title: String, val body: String, val 
 data class EvalResult(val firings: List<Firing>, val states: Map<String, RuleState>)
 
 /**
+ * The highest and lowest price the market reached between the previous sample and this one,
+ * from the exchange's own 1-minute candles. Polling only sees discrete points, so a spike
+ * shorter than the poll interval is invisible to sampling alone — this closes that gap.
+ */
+data class Extremes(val high: Double, val low: Double)
+
+/**
  * Pure alert logic — no Android imports so it can be unit-tested on the JVM.
  *
  * @param history  all prior samples, oldest first, NOT including [current].
  * @param current  the sample just fetched.
+ * @param gap      what the market did between the previous sample and [current], when known.
+ *                 Cross rules test against these extremes so a spike between polls still fires.
  */
 object AlertEngine {
 
@@ -32,6 +41,7 @@ object AlertEngine {
         history: List<PriceSample>,
         current: PriceSample,
         inQuietHours: Boolean = false,
+        gap: Extremes? = null,
     ): EvalResult {
         val prev = history.lastOrNull()
         val firings = mutableListOf<Firing>()
@@ -44,22 +54,27 @@ object AlertEngine {
 
             val firing: Firing? = when (rule.type) {
                 RuleType.CROSS_ABOVE -> {
+                    // Peak of the whole interval, not just the two endpoints we happened to sample.
+                    val peak = maxOf(current.price, gap?.high ?: current.price)
                     if (prev != null && snoozeOver(st, rule.snoozeMinutes, now)
-                        && prev.price < rule.level && current.price >= rule.level
+                        && prev.price < rule.level && peak >= rule.level
                     ) Firing(
                         rule,
                         "BTC crossed above ${usd(rule.level)}",
-                        "Now ${usd2(current.price)} (was ${usd2(prev.price)})",
+                        if (current.price >= rule.level) "Now ${usd2(current.price)} (was ${usd2(prev.price)})"
+                        else "Peaked at ${usd2(peak)} · back to ${usd2(current.price)}",
                         quiet = false,
                     ) else null
                 }
                 RuleType.CROSS_BELOW -> {
+                    val trough = minOf(current.price, gap?.low ?: current.price)
                     if (prev != null && snoozeOver(st, rule.snoozeMinutes, now)
-                        && prev.price > rule.level && current.price <= rule.level
+                        && prev.price > rule.level && trough <= rule.level
                     ) Firing(
                         rule,
                         "BTC crossed below ${usd(rule.level)}",
-                        "Now ${usd2(current.price)} (was ${usd2(prev.price)})",
+                        if (current.price <= rule.level) "Now ${usd2(current.price)} (was ${usd2(prev.price)})"
+                        else "Dipped to ${usd2(trough)} · back to ${usd2(current.price)}",
                         quiet = false,
                     ) else null
                 }
