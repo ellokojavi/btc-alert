@@ -1,6 +1,7 @@
 package com.irigoyen.btcalert.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -83,10 +84,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.irigoyen.btcalert.data.PriceChecker
@@ -125,6 +126,9 @@ class MainActivity : ComponentActivity() {
 
 private enum class Screen { HOME, SETTINGS, LOG }
 
+// POST_NOTIFICATIONS is API 33 and the constant is inlined at compile time, so requesting it on
+// Android 12 is a harmless no-op that returns granted. Nothing to guard.
+@SuppressLint("InlinedApi")
 @Composable
 fun App() {
     val ctx = LocalContext.current
@@ -711,6 +715,10 @@ private fun LogScreen(state: AppState, onBack: () -> Unit) {
 
 // ---------------------------------------------------------------- Settings
 
+// Lint flags REQUEST_IGNORE_BATTERY_OPTIMIZATIONS as a Play Store policy violation. This app is
+// installed from a GitHub release, not Play, and the exemption is the difference between a 15-minute
+// alert and an hour-late one — it's the documented setup step in the README.
+@SuppressLint("BatteryLife")
 @Composable
 private fun SettingsScreen(state: AppState, onBack: () -> Unit, onChange: (Settings) -> Unit) {
     val ctx = LocalContext.current

@@ -1,6 +1,7 @@
 package com.irigoyen.btcalert.notify
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -41,6 +42,8 @@ object Notifier {
         )
     }
 
+    // API 33 constant, inlined at compile time; on Android 12 the check simply returns granted.
+    @SuppressLint("InlinedApi")
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 

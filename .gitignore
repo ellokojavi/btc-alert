@@ -12,3 +12,6 @@ keystore/keystore.properties
 
 # Claude Code local state (settings.json IS tracked, on purpose)
 .claude/settings.local.json
+
+# macOS Finder droppings
+.DS_Store
