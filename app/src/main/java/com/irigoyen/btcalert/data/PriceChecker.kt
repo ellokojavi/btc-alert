@@ -5,6 +5,7 @@ import com.irigoyen.btcalert.engine.AlertEngine
 import com.irigoyen.btcalert.model.FetchErrorKind
 import com.irigoyen.btcalert.model.NetworkStatus
 import com.irigoyen.btcalert.model.PriceSample
+import com.irigoyen.btcalert.model.RuleType
 import com.irigoyen.btcalert.model.SourceFailure
 import com.irigoyen.btcalert.model.classifyFetchError
 import com.irigoyen.btcalert.notify.Notifier
@@ -58,7 +59,17 @@ object PriceChecker {
         val quiet = before.settings.quietHoursEnabled &&
             AlertEngine.isInQuietHours(hour, before.settings.quietStartHour, before.settings.quietEndHour)
 
-        val result = AlertEngine.evaluate(before.rules, before.ruleStates, before.history, sample, quiet)
+        // A cross can happen entirely between two polls, so ask the exchange what the market did
+        // in the gap. Only worth a request when a cross rule is armed and the gap is non-trivial.
+        val prev = before.history.lastOrNull()
+        val needsGap = before.rules.any {
+            it.enabled && (it.type == RuleType.CROSS_ABOVE || it.type == RuleType.CROSS_BELOW)
+        }
+        val gap = if (needsGap && prev != null && sample.time - prev.time >= IntervalExtremes.MIN_GAP_MS) {
+            IntervalExtremes.fetch(prev.time, sample.time)
+        } else null
+
+        val result = AlertEngine.evaluate(before.rules, before.ruleStates, before.history, sample, quiet, gap)
 
         store.update { s ->
             val newLog = result.firings.map { "${logFmt.format(Date(sample.time))}  ${it.title}" } + s.log

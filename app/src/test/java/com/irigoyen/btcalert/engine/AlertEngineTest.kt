@@ -128,6 +128,40 @@ class AlertEngineTest {
         assertTrue(sparseTimes.zipWithNext().all { (a, b) -> b - a >= min })
     }
 
+    @Test fun `cross above fires on a spike that happened entirely between two samples`() {
+        // Both sampled prices sit below the level; the market touched 82,283 in between.
+        val rule = AlertRule(type = RuleType.CROSS_ABOVE, level = 82_000.0)
+        val gap = Extremes(high = 82_283.0, low = 81_400.0)
+        val r = AlertEngine.evaluate(listOf(rule), emptyMap(), listOf(s(0, 81_500.0)), s(15, 81_600.0), gap = gap)
+        assertEquals(1, r.firings.size)
+        assertTrue(r.firings[0].body.startsWith("Peaked at"))
+        // Without the gap data the same samples fire nothing — that was the v1.5 miss.
+        assertTrue(AlertEngine.evaluate(listOf(rule), emptyMap(), listOf(s(0, 81_500.0)), s(15, 81_600.0)).firings.isEmpty())
+    }
+
+    @Test fun `cross below fires on a dip between samples`() {
+        val rule = AlertRule(type = RuleType.CROSS_BELOW, level = 70_000.0)
+        val gap = Extremes(high = 71_000.0, low = 69_800.0)
+        val r = AlertEngine.evaluate(listOf(rule), emptyMap(), listOf(s(0, 70_500.0)), s(15, 70_400.0), gap = gap)
+        assertEquals(1, r.firings.size)
+        assertTrue(r.firings[0].body.startsWith("Dipped to"))
+    }
+
+    @Test fun `gap extremes do not fire a rule the price was already above`() {
+        val rule = AlertRule(type = RuleType.CROSS_ABOVE, level = 82_000.0)
+        val gap = Extremes(high = 82_500.0, low = 82_100.0)
+        val r = AlertEngine.evaluate(listOf(rule), emptyMap(), listOf(s(0, 82_200.0)), s(15, 82_300.0), gap = gap)
+        assertTrue(r.firings.isEmpty())
+    }
+
+    @Test fun `gap extremes still respect snooze`() {
+        val rule = AlertRule(type = RuleType.CROSS_ABOVE, level = 82_000.0, snoozeMinutes = 60)
+        val gap = Extremes(high = 82_283.0, low = 81_400.0)
+        val states = mapOf(rule.id to RuleState(lastFiredAt = t0 + 10 * min, lastFiredPrice = 82_100.0))
+        val r = AlertEngine.evaluate(listOf(rule), states, listOf(s(0, 81_500.0)), s(15, 81_600.0), gap = gap)
+        assertTrue(r.firings.isEmpty())
+    }
+
     @Test fun `preview firing matches real title format and never needs history`() {
         val above = AlertRule(type = RuleType.CROSS_ABOVE, level = 80_000.0)
         val f = AlertEngine.previewFiring(above, 77_500.0)
