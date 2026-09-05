@@ -97,9 +97,16 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
 - **Renaming a resource directory needs `./gradlew clean`.** After `mipmap-anydpi-v26` became
   `mipmap-anydpi`, incremental builds kept linking the old merged output and failed with
   "resource mipmap/ic_launcher not found" against a tree that was perfectly correct.
-- **The live dot must tell the truth.** It pulses only when `lastFetchError == null` and the last
-  sample is under a minute old; offline or stale, the halo stops and the dot dims. An indicator
-  that keeps pulsing while nothing arrives is worse than no indicator.
+- **The live dot must tell the truth.** It animates only when the last sample is under 90 s old and
+  the last failure wasn't a connectivity one (a single source hiccup doesn't make a 20-second-old
+  price stale); otherwise the motion stops and the dot dims. An indicator that keeps pulsing while
+  nothing arrives is worse than no indicator. A `now` value ticks once a second inside the hero so
+  it goes quiet on time even when no other state changes.
+- **Subtle motion reads as no motion on a phone.** v1.8's dot was a single ring travelling 3.5→9 dp
+  while fading from 45% — invisible in practice, and the core never moved, so the whole thing looked
+  static. What works: a core that breathes, two ripples half a cycle apart so one is always in
+  flight, and a flare keyed to the arriving sample timestamp. Motion tied to real data beats motion
+  on a timer.
 - **GitHub Actions:** the `secrets` context is not allowed in a step-level `if:`. Check
   inside the shell instead (this silently produced "No jobs were run").
 
