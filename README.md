@@ -25,6 +25,8 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 **Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **1h · 24h · 7d · 30d · 1y · 5y** that switch the chart timeframe (1-min candles for 1h, 5-min for 24h, hourly for 7d, 6-hourly for 30d, daily for 1y, weekly for 5y).
 
+**Block card** — under the price: the current block height with a translucent cube, when the next block is due, and the block's txs, fee and pool. "tick tock next block" builds itself a word at a time beside the height. The block number links to that block on mempool.space.
+
 **Two background modes** (Settings):
 
 - *Battery saver* — Android's background scheduler checks every ~15 minutes. Invisible, negligible battery.
@@ -84,6 +86,8 @@ app/src/main/java/com/irigoyen/btcalert/
   data/Connectivity.kt      device network state: offline / no internet / online
   data/HistoricalPrices.kt  7d/30d/1y/5y reference prices from Coinbase Exchange hourly candles
   data/ChartData.kt         chart series per timeframe (granularity chosen for ~150–300 points)
+  data/ChainData.kt         block height, fees, mempool and difficulty from mempool.space
+  model/ChainInfo.kt        chain state + pure pace/copy helpers (tested)
   data/Store.kt             single-file JSON persistence + StateFlow for the UI
   data/PriceChecker.kt      fetch → evaluate → notify → save (shared by every polling path)
   work/PriceCheckWorker.kt  WorkManager job (battery-saver mode)

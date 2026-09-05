@@ -95,6 +95,8 @@ data class AppState(
     /** Chart data keyed by [Horizon.name]; fetched on demand for the selected timeframe. */
     val charts: Map<String, ChartSeries> = emptyMap(),
     val settings: Settings = Settings(),
+    /** Latest chain state for the block card; only refreshed while the app is on screen. */
+    val chain: ChainInfo? = null,
     /** Why the last fetch failed, or null after any success. See [classifyFetchError]. */
     val lastFetchError: FetchError? = null,
     val log: List<String> = emptyList(),
