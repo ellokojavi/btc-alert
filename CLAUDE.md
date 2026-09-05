@@ -107,6 +107,14 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
   static. What works: a core that breathes, two ripples half a cycle apart so one is always in
   flight, and a flare keyed to the arriving sample timestamp. Motion tied to real data beats motion
   on a timer.
+- **The block card is foreground-only.** `ChainData` refreshes every 30 s but *only* while the app
+  is on screen — nothing about the chain is worth a background wakeup, and a stale card is never a
+  missed alert. Fees and mempool depth are fetched with `runCatching` so losing them doesn't cost
+  us the block itself.
+- **"next ~10 min" never counts down**, because the wait doesn't shrink while you watch: blocks are
+  memoryless, so after 25 minutes the next one is still a full interval away. `paceSeconds()`
+  derives the figure from the pending difficulty adjustment (600 s ÷ the pace the network is
+  actually running), and `blockWaitNote()` leans on the constancy instead of hiding it.
 - **GitHub Actions:** the `secrets` context is not allowed in a step-level `if:`. Check
   inside the shell instead (this silently produced "No jobs were run").
 

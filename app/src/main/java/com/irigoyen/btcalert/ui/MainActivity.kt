@@ -34,9 +34,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import com.irigoyen.btcalert.data.ChainData
 import com.irigoyen.btcalert.data.ChartData
 import com.irigoyen.btcalert.data.Connectivity
+import com.irigoyen.btcalert.model.ChainInfo
 import com.irigoyen.btcalert.model.ChartSeries
+import com.irigoyen.btcalert.model.blockWaitNote
+import com.irigoyen.btcalert.model.isFreshBlock
+import com.irigoyen.btcalert.model.paceLabel
 import com.irigoyen.btcalert.model.FetchError
 import com.irigoyen.btcalert.model.usd
 import androidx.compose.foundation.background
@@ -82,6 +87,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,7 +97,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -182,6 +191,23 @@ fun App() {
             }
         }
     }
+    // Chain state for the block card. Only while the app is on screen — nothing about this card
+    // is worth a background wakeup, and a stale card is never a missed alert.
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                if (!Connectivity.isOffline(ctx) && ChainData.isStale(store.state.value.chain, now)) {
+                    try {
+                        val info = ChainData.fetch(now)
+                        store.update { it.copy(chain = info) }
+                    } catch (_: Exception) { }
+                }
+                delay(10_000)
+            }
+        }
+    }
+
     val onSelectHorizon: (Horizon) -> Unit = { h ->
         scope.launch { store.update { it.copy(settings = it.settings.copy(chartHorizon = h.name)) } }
     }
@@ -305,6 +331,7 @@ private fun HomeScreen(
             ) {
                 item { Header(onLog, onSettings) }
                 item { PriceHero(state, chartHorizon, onSelectHorizon) }
+                item { BlockCard(state.chain, offline = state.lastFetchError?.kind?.isConnectivity == true) }
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 2.dp),
@@ -600,6 +627,161 @@ private fun fmtChange(pct: Double): String {
         else -> "%.1f%%".format(Locale.US, a)
     }
     return sign + body
+}
+
+/** How long one full run of "tick tock next block" takes. */
+private const val PHRASE_MS = 5400
+
+/**
+ * Chain status: block height, when the next one is due, and the phrase building itself a word at
+ * a time. Only the source text is tappable — the card sits inside the app, so there is nothing
+ * else for a tap to usefully do.
+ */
+@Composable
+private fun BlockCard(chain: ChainInfo?, offline: Boolean) {
+    val ctx = LocalContext.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1_000) } }
+
+    val minutesSince = chain?.takeIf { it.minedAt > 0 }?.let { (now - it.minedAt) / 60_000L }
+    val known = chain != null && chain.height > 0L
+    val live = known && !offline
+    val alpha = if (live) 1f else 0.66f
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Ink.Surface, MaterialTheme.shapes.small)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BlockCube(Modifier.size(24.dp), alpha = if (live) 0.42f else 0.18f)
+            Spacer(Modifier.width(9.dp))
+            Text(
+                if (known) "%,d".format(Locale.US, chain!!.height) else "—",
+                style = MaterialTheme.typography.titleLarge.copy(letterSpacing = (-0.9).sp),
+                color = if (live) Ink.White else Ink.Muted,
+            )
+            if (minutesSince != null && live && isFreshBlock(minutesSince)) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "NEW",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Ink.Up,
+                    modifier = Modifier
+                        .border(1.dp, Ink.Up.copy(alpha = 0.4f), CircleShape)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            TickTockPhrase(running = live)
+        }
+
+        val lead = if (!known) "next —"
+        else "next ${paceLabel(chain!!.difficultyChangePct)}${minutesSince?.let { blockWaitNote(it) } ?: ""}"
+        val rest = buildList {
+            if (known) {
+                if (chain!!.txCount > 0) add("%,d txs".format(Locale.US, chain.txCount))
+                if (chain.feeSatVb > 0) add("${chain.feeSatVb} sat/vB")
+                if (chain.pool.isNotBlank()) add(chain.pool)
+            } else add("no chain data")
+        }.joinToString(" · ")
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                lead,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = if (live) Color(0xFFC7CAD1) else Ink.Muted,
+                maxLines = 1,
+            )
+            Text(
+                "  ·  $rest  ·  ",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink.Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            val url = if (known) "https://mempool.space/block/${chain!!.height}" else "https://mempool.space"
+            Text(
+                "mempool.space ↗",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink.Faint,
+                maxLines = 1,
+                modifier = Modifier.clickable {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                },
+            )
+        }
+    }
+}
+
+/** Translucent isometric block. Three faces at different alphas so it reads as glass, not a hexagon. */
+@Composable
+private fun BlockCube(modifier: Modifier = Modifier, alpha: Float) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        fun p(x: Float, y: Float) = Offset(x * w, y * h)
+        fun face(points: List<Offset>, a: Float) {
+            val path = Path().apply {
+                moveTo(points[0].x, points[0].y)
+                points.drop(1).forEach { lineTo(it.x, it.y) }
+                close()
+            }
+            drawPath(path, Ink.Accent.copy(alpha = a * alpha))
+        }
+        face(listOf(p(.5f, .06f), p(.94f, .31f), p(.5f, .55f), p(.06f, .31f)), 0.95f)   // top
+        face(listOf(p(.06f, .31f), p(.5f, .55f), p(.5f, .95f), p(.06f, .71f)), 0.45f)   // left
+        face(listOf(p(.94f, .31f), p(.5f, .55f), p(.5f, .95f), p(.94f, .71f)), 0.68f)   // right
+    }
+}
+
+/**
+ * "tick tock next block", one word at a time: each fades in at full accent, then eases back to
+ * faint as the next arrives, and the line clears before starting over. The words keep their slots
+ * throughout so nothing reflows. Stops on the word it reached when the data isn't live.
+ */
+@Composable
+private fun TickTockPhrase(running: Boolean) {
+    val words = listOf("tick", "tock", "next", "block")
+    val phase by if (running) {
+        rememberInfiniteTransition(label = "phrase").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(PHRASE_MS, easing = LinearEasing), RepeatMode.Restart),
+            label = "phrasePhase",
+        )
+    } else {
+        remember { mutableFloatStateOf(0.45f) }   // frozen mid-phrase: "tick tock" showing
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        words.forEachIndexed { i, word ->
+            val start = i * 0.16f
+            val appeared = smoothRamp(phase, start, start + 0.07f)
+            val faded = if (i == words.lastIndex) 0f else smoothRamp(phase, start + 0.16f, start + 0.24f)
+            val cleared = smoothRamp(phase, 0.86f, 0.96f)
+            Text(
+                word,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.9.sp,
+                ),
+                color = lerp(Ink.Accent, Ink.Faint, faded)
+                    .copy(alpha = (appeared * (1f - cleared)).coerceIn(0f, 1f)),
+            )
+        }
+    }
+}
+
+/** 0 before [from], 1 after [to], smoothstepped between — no hard edges anywhere in the phrase. */
+private fun smoothRamp(x: Float, from: Float, to: Float): Float {
+    val t = ((x - from) / (to - from)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 /**
