@@ -121,7 +121,17 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
 ## Release process
 
 ```bash
-# after bumping versionCode/versionName
+bin/release.sh 1.10 "block card polish"             # bump → test → lint → build → commit → tag → push
+bin/release.sh 1.10 "block card polish" --dry-run   # everything up to the commit, then roll back
+```
+
+`bin/release.sh` derives the next `versionCode` from the current one and refuses the mistakes
+worth refusing: not on main, dirty tree, tag already present locally or on origin, a version
+that isn't a bump, an origin that has moved ahead, lint errors, an unsigned APK. Prefer it over
+doing the steps by hand — the manual sequence below is what it automates.
+
+```bash
+# equivalent by hand, after bumping versionCode/versionName
 ./gradlew testReleaseUnitTest lintRelease assembleRelease
 git commit -am "vX.Y: ..." && git tag vX.Y
 git push origin main vX.Y      # the tag build publishes the Release with the APK attached
