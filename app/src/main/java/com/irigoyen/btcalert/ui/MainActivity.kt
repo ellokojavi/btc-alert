@@ -15,6 +15,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -81,6 +82,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -364,17 +366,22 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
         animationSpec = tween(400), label = "tick",
     )
 
-    // "Live" means the price on screen is actually current: a recent sample and no fetch error.
-    // While the app is open PriceChecker runs every 10 s, so anything older than a minute means
-    // something is wrong — and the dot stops pulsing rather than implying data that isn't arriving.
-    val live = state.lastFetchError == null && last != null &&
-        System.currentTimeMillis() - last.time < 60_000L
+    // "Live" means the price on screen is actually current. The app polls every 10 s while open,
+    // so a sample older than 90 s means data has stopped arriving. A connectivity failure kills it
+    // outright; a single source hiccup doesn't, because a 20-second-old price is still live.
+    // now ticks on its own so the dot goes quiet on time even when nothing else recomposes.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) { now = System.currentTimeMillis(); delay(1_000) }
+    }
+    val live = last != null && now - last.time < 90_000L &&
+        state.lastFetchError?.kind?.isConnectivity != true
 
     Column(Modifier.padding(top = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("BTC / USD", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
             Spacer(Modifier.width(7.dp))
-            LiveDot(live = live)
+            LiveDot(live = live, sampleTime = last?.time ?: 0L)
         }
         Spacer(Modifier.height(4.dp))
         Text(
@@ -596,39 +603,61 @@ private fun fmtChange(pct: Double): String {
 }
 
 /**
- * Orange dot with an expanding halo, marking the price as live. When it isn't (offline, or the
- * last sample has gone stale) the halo stops and the dot dims — a pulse that keeps going while
- * nothing is arriving would be the one thing this indicator must never do.
+ * Orange "live" dot: a breathing core, two ripples half a cycle apart so a ring is always in
+ * flight, and a flare each time a new price actually lands. When the price isn't live the whole
+ * thing stops and the dot dims — a pulse that keeps going while nothing arrives would be the one
+ * thing this indicator must never do.
+ *
+ * @param sampleTime timestamp of the newest price, so the flare fires on real data rather than a timer.
  */
 @Composable
-private fun LiveDot(live: Boolean, modifier: Modifier = Modifier) {
-    val core = 7.dp
-    val ring = 18.dp
+private fun LiveDot(live: Boolean, sampleTime: Long, modifier: Modifier = Modifier) {
+    val box = 26.dp
+    val coreD = 8.dp
+
     if (!live) {
-        Box(modifier.size(ring), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(core).background(Ink.Faint, CircleShape))
+        Box(modifier.size(box), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(coreD).background(Ink.Faint, CircleShape))
         }
         return
     }
-    val pulse = rememberInfiniteTransition(label = "live")
-    val t by pulse.animateFloat(
+
+    val transition = rememberInfiniteTransition(label = "live")
+    // One linear 0→1 sweep drives both ripples; the second is read half a phase ahead.
+    val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart),
-        label = "livePulse",
+        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart),
+        label = "ripple",
     )
-    Canvas(modifier.size(ring)) {
-        val coreR = core.toPx() / 2f
+    val breath by transition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "breath",
+    )
+    // A visible kick the moment a new sample lands, decaying back to the resting size.
+    val flare = remember { Animatable(1f) }
+    LaunchedEffect(sampleTime) {
+        flare.snapTo(1.55f)
+        flare.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
+    }
+
+    Canvas(modifier.size(box)) {
+        val coreR = coreD.toPx() / 2f
         val maxR = size.minDimension / 2f
-        // Ease the halo out so it leaves the core quickly and lingers as it fades, and hold the
-        // last stretch fully transparent so there's a beat of rest between pulses.
-        val eased = 1f - (1f - t) * (1f - t)
-        drawCircle(
-            color = Ink.Accent.copy(alpha = 0.45f * (1f - eased).coerceAtLeast(0f)),
-            radius = coreR + (maxR - coreR) * eased,
-            center = center,
-        )
-        drawCircle(Ink.Accent, radius = coreR, center = center)
+        repeat(2) { i ->
+            val p = (phase + i * 0.5f) % 1f
+            // Hold most of the opacity through the middle of the travel, where the ring is big
+            // enough to read, instead of spending it while it's still hidden behind the core.
+            val alpha = 0.55f * (1f - p) * (1f - p * 0.35f)
+            drawCircle(
+                color = Ink.Accent.copy(alpha = alpha.coerceIn(0f, 1f)),
+                radius = coreR + (maxR - coreR) * p,
+                center = center,
+            )
+        }
+        drawCircle(Ink.Accent, radius = coreR * breath * flare.value, center = center)
     }
 }
 
