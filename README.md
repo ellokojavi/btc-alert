@@ -23,7 +23,7 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 **Test notification** — in the rule editor, one tap sends the exact notification that rule would produce, using the live price, so you can see and hear it before you rely on it.
 
-**Live price & chart** — a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **1h · 24h · 7d · 30d · 1y · 5y** that switch the chart timeframe (1-min candles for 1h, 5-min for 24h, hourly for 7d, 6-hourly for 30d, daily for 1y, weekly for 5y).
+**Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **1h · 24h · 7d · 30d · 1y · 5y** that switch the chart timeframe (1-min candles for 1h, 5-min for 24h, hourly for 7d, 6-hourly for 30d, daily for 1y, weekly for 5y).
 
 **Two background modes** (Settings):
 

@@ -94,6 +94,12 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
   `InlinedApi` ×3 (API 33/34 constants that inline harmlessly at minSdk 31) and `BatteryLife` (a Play
   Store policy that doesn't apply to a sideloaded app whose whole job needs the exemption). Lint is at
   zero errors and zero warnings other than `GradleDependency`; keep it that way.
+- **Renaming a resource directory needs `./gradlew clean`.** After `mipmap-anydpi-v26` became
+  `mipmap-anydpi`, incremental builds kept linking the old merged output and failed with
+  "resource mipmap/ic_launcher not found" against a tree that was perfectly correct.
+- **The live dot must tell the truth.** It pulses only when `lastFetchError == null` and the last
+  sample is under a minute old; offline or stale, the halo stops and the dot dims. An indicator
+  that keeps pulsing while nothing arrives is worse than no indicator.
 - **GitHub Actions:** the `secrets` context is not allowed in a step-level `if:`. Check
   inside the shell instead (this silently produced "No jobs were run").
 

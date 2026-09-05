@@ -15,6 +15,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -359,8 +364,18 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
         animationSpec = tween(400), label = "tick",
     )
 
+    // "Live" means the price on screen is actually current: a recent sample and no fetch error.
+    // While the app is open PriceChecker runs every 10 s, so anything older than a minute means
+    // something is wrong — and the dot stops pulsing rather than implying data that isn't arriving.
+    val live = state.lastFetchError == null && last != null &&
+        System.currentTimeMillis() - last.time < 60_000L
+
     Column(Modifier.padding(top = 24.dp)) {
-        Text("BTC / USD", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("BTC / USD", style = MaterialTheme.typography.labelMedium, color = Ink.Muted)
+            Spacer(Modifier.width(7.dp))
+            LiveDot(live = live)
+        }
         Spacer(Modifier.height(4.dp))
         Text(
             if (last == null) "—" else usd2(animated.toDouble()),
@@ -578,6 +593,43 @@ private fun fmtChange(pct: Double): String {
         else -> "%.1f%%".format(Locale.US, a)
     }
     return sign + body
+}
+
+/**
+ * Orange dot with an expanding halo, marking the price as live. When it isn't (offline, or the
+ * last sample has gone stale) the halo stops and the dot dims — a pulse that keeps going while
+ * nothing is arriving would be the one thing this indicator must never do.
+ */
+@Composable
+private fun LiveDot(live: Boolean, modifier: Modifier = Modifier) {
+    val core = 7.dp
+    val ring = 18.dp
+    if (!live) {
+        Box(modifier.size(ring), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(core).background(Ink.Faint, CircleShape))
+        }
+        return
+    }
+    val pulse = rememberInfiniteTransition(label = "live")
+    val t by pulse.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart),
+        label = "livePulse",
+    )
+    Canvas(modifier.size(ring)) {
+        val coreR = core.toPx() / 2f
+        val maxR = size.minDimension / 2f
+        // Ease the halo out so it leaves the core quickly and lingers as it fades, and hold the
+        // last stretch fully transparent so there's a beat of rest between pulses.
+        val eased = 1f - (1f - t) * (1f - t)
+        drawCircle(
+            color = Ink.Accent.copy(alpha = 0.45f * (1f - eased).coerceAtLeast(0f)),
+            radius = coreR + (maxR - coreR) * eased,
+            center = center,
+        )
+        drawCircle(Ink.Accent, radius = coreR, center = center)
+    }
 }
 
 @Composable
