@@ -330,6 +330,11 @@ private fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item { Header(onLog, onSettings) }
+                // Above everything: losing the connection is the first thing worth knowing, and
+                // burying it under the price it invalidates makes it easy to miss.
+                state.lastFetchError?.let { err ->
+                    item { ConnectionBanner(err, state.history.lastOrNull()) }
+                }
                 item { PriceHero(state, chartHorizon, onSelectHorizon) }
                 item { BlockCard(state.chain, offline = state.lastFetchError?.kind?.isConnectivity == true) }
                 item {
@@ -424,13 +429,7 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             offline = state.lastFetchError?.kind?.isConnectivity == true,
             modifier = Modifier.fillMaxWidth().height(150.dp),
         )
-        // Directly under the chart: the banner explains why the chart above it stopped moving,
-        // so it belongs next to what it's explaining rather than at the end of the block.
         val err = state.lastFetchError
-        if (err != null) {
-            Spacer(Modifier.height(12.dp))
-            ConnectionBanner(err, last)
-        }
         Spacer(Modifier.height(12.dp))
         // Six equal-width pills on one line; each gets weight(1f) so they can never wrap or overflow.
         // Tapping one selects the chart timeframe.
