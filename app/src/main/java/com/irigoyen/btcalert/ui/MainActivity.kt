@@ -424,6 +424,13 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             offline = state.lastFetchError?.kind?.isConnectivity == true,
             modifier = Modifier.fillMaxWidth().height(150.dp),
         )
+        // Directly under the chart: the banner explains why the chart above it stopped moving,
+        // so it belongs next to what it's explaining rather than at the end of the block.
+        val err = state.lastFetchError
+        if (err != null) {
+            Spacer(Modifier.height(12.dp))
+            ConnectionBanner(err, last)
+        }
         Spacer(Modifier.height(12.dp))
         // Six equal-width pills on one line; each gets weight(1f) so they can never wrap or overflow.
         // Tapping one selects the chart timeframe.
@@ -439,17 +446,12 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             }
         }
         Spacer(Modifier.height(14.dp))
-        val err = state.lastFetchError
         val status = when {
             last != null -> "${last.source} · ${timeFmt.format(Date(last.time))} · ${state.settings.pollMode.label}"
             err != null -> "No price yet"
             else -> "Fetching first price…"
         }
         Text(status, style = MaterialTheme.typography.bodySmall, color = Ink.Faint)
-        if (err != null) {
-            Spacer(Modifier.height(10.dp))
-            ConnectionBanner(err, last)
-        }
     }
 }
 
