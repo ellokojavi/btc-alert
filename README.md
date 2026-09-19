@@ -23,7 +23,7 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 **Test notification** — in the rule editor, one tap sends the exact notification that rule would produce, using the live price, so you can see and hear it before you rely on it.
 
-**Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **24h · 7d · 30d · 6m · 1y · 5y** that switch the chart timeframe (5-min candles for 24h, hourly for 7d, 6-hourly for 30d, daily for 6m and 1y, weekly for 5y). Touch and hold anywhere on the chart to read the price at that point, and drag to scrub along it. The period's high and low are marked on the line with small green and red dots.
+**Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **24h · 7d · 30d · 6m · 1y · 5y** that switch the chart timeframe (5-min candles for 24h, hourly for 7d, 6-hourly for 30d, daily for 6m and 1y, weekly for 5y). Touch and hold anywhere on the chart to read the price at that point, and drag to scrub along it. The period's high and low are marked on the line with small green and red dots, each labelled with its price ($81.2k).
 
 **Block card** — under the price: the current block height with a translucent cube, when the next block is due, and the block's txs, fee and pool. "tick tock next block" builds itself a word at a time beside the height. The block number links to that block on mempool.space.
 

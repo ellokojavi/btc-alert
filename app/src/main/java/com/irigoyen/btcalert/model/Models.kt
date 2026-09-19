@@ -104,6 +104,13 @@ data class AppState(
 
 fun usd(v: Double): String = "$" + String.format(java.util.Locale.US, "%,.0f", v)
 fun usd2(v: Double): String = "$" + String.format(java.util.Locale.US, "%,.2f", v)
+
+/** Chart-marker price: $81.2k, $105.3k, $1.05M — the level at a glance, in four or five characters. */
+fun usdShort(v: Double): String = when {
+    v >= 1_000_000 -> String.format(java.util.Locale.US, "$%.2fM", v / 1_000_000)
+    v >= 1_000 -> String.format(java.util.Locale.US, "$%.1fk", v / 1_000)
+    else -> String.format(java.util.Locale.US, "$%.0f", v)
+}
 fun fmtPct(v: Double): String = if (v == v.toLong().toDouble()) "${v.toLong()}%" else String.format(java.util.Locale.US, "%.1f%%", v)
 fun fmtMin(m: Int): String = when {
     m % 1440 == 0 -> "${m / 1440} d"

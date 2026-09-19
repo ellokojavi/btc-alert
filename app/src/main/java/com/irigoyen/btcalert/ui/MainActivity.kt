@@ -27,6 +27,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -49,7 +50,7 @@ import com.irigoyen.btcalert.model.blockWaitNote
 import com.irigoyen.btcalert.model.isFreshBlock
 import com.irigoyen.btcalert.model.paceLabel
 import com.irigoyen.btcalert.model.FetchError
-import com.irigoyen.btcalert.model.usd
+import com.irigoyen.btcalert.model.usdShort
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -567,9 +568,10 @@ private fun PriceChart(
         val loPoint = remember(points) { points.minBy { it.price } }
         val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Ink.Faint, letterSpacing = 0.sp)
         val readoutStyle = MaterialTheme.typography.labelLarge.copy(color = Ink.White)
+        // Tinted to match its dot and left at 12 sp — the level should be readable at a glance
+        // without the eye landing on it before the line.
+        val extremeStyle = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.sp)
         val measurer = rememberTextMeasurer()
-        val hiText = remember(maxP) { "H ${usd(maxP)}" }
-        val loText = remember(minP) { "L ${usd(minP)}" }
         // The y-axis is zoomed to min..max, so a 0.2%-wide window fills the whole box. Saying how
         // wide the window is stops a flat timeframe from looking like a crash.
         val spanText = remember(minP, maxP) { "span ${fmtChange((maxP - minP) / minP * 100).removePrefix("+")}" }
@@ -664,13 +666,31 @@ private fun PriceChart(
                 points.minBy { abs(it.time - t) }
             }
             if (touched == null) {
-                // High / low labels, tucked into the corners so they never collide with the line ends.
-                val hi = measurer.measure(hiText, labelStyle)
-                val lo = measurer.measure(loText, labelStyle)
-                drawText(hi, topLeft = Offset(0f, 0f))
-                drawText(lo, topLeft = Offset(0f, h - lo.size.height))
                 val sp = measurer.measure(spanText, labelStyle)
-                drawText(sp, topLeft = Offset(w - sp.size.width - padRight, h - sp.size.height))
+                val spanAt = Offset(w - sp.size.width - padRight, h - sp.size.height)
+                drawText(sp, topLeft = spanAt)
+
+                // The price at each extreme, beside its dot. Alongside rather than above: the
+                // 14 dp of top padding has no room for a line of text over the peak, and a label
+                // centred on the dot's own y needs none.
+                if (reveal.value >= 1f) {
+                    val spanRect = Rect(spanAt, Size(sp.size.width.toFloat(), sp.size.height.toFloat()))
+                    val gap = 7.dp.toPx()
+                    for ((pt, tint) in listOf(hiPoint to Ink.Up, loPoint to Ink.Down)) {
+                        val t = measurer.measure(usdShort(pt.price), extremeStyle.copy(color = tint.copy(alpha = 0.9f)))
+                        val tw = t.size.width.toFloat()
+                        val th = t.size.height.toFloat()
+                        val dx = x(pt.time)
+                        // Right of the dot, flipping left when that would run off the edge.
+                        val lx = (if (dx + gap + tw > w) dx - gap - tw else dx + gap)
+                            .coerceIn(0f, (w - tw).coerceAtLeast(0f))
+                        var ly = y(pt.price) - th / 2f
+                        // "span" owns the bottom-right corner; lift the low above it rather than
+                        // letting two numbers sit on top of each other.
+                        if (Rect(Offset(lx, ly), Size(tw, th)).overlaps(spanRect)) ly = spanRect.top - th
+                        drawText(t, topLeft = Offset(lx, ly.coerceIn(0f, h - th)))
+                    }
+                }
             } else {
                 // The corner labels stand down while scrubbing: the readout answers the same
                 // question more precisely, and there is no room for both at the top of the box.
