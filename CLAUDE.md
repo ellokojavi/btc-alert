@@ -64,9 +64,11 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
   label. Don't remove them without replacing the reference they provide. The H/L corner labels
   extremes are marked with dots on the line, each carrying an abbreviated price (`usdShort`,
   `$81.2k`) beside it — position and level in one mark, which the zoomed axis alone can't give.
-  Labels sit *beside* their dot, not above: the 14 dp top padding has no room for text over the
-  peak, and one centred on the dot's own y needs none. They flip to the left of the dot near the
-  right edge, and the low lifts above the "span" label rather than colliding with it.
+  Each label sits on the *outside* of its dot — above the high, below the low — because no point
+  can be above the maximum or below the minimum, so that strip is clear whatever the shape.
+  Beside the dot is not: on a flat window the line runs level straight through the label. That
+  costs 28 dp of padding top and bottom, and the box is 178 dp to keep the plot at the 122 dp it
+  had at 150 dp. The low slides left of the "span" label when it would collide.
 - **Coinbase candles cap at 300 per request.** `ChartData` chunks accordingly. Granularity
   per timeframe targets ~150–300 points: 24h→300 s, 7d→3600 s, 30d→21600 s, 6m→86400 s,
   1y→86400 s, 5y→86400 s keeping 1 in 7. Only 60/300/900/3600/21600/86400 are valid.
