@@ -24,6 +24,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
@@ -277,6 +282,16 @@ fun App() {
 
 private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
 private val dayTimeFmt = SimpleDateFormat("EEE HH:mm", Locale.US)
+private val scrubClockFmt = SimpleDateFormat("HH:mm", Locale.US)
+private val scrubDayFmt = SimpleDateFormat("d MMM, HH:mm", Locale.US)
+private val scrubDateFmt = SimpleDateFormat("d MMM yyyy", Locale.US)
+
+/** Chart readout timestamp, at the resolution the timeframe's candles actually carry. */
+private fun scrubTime(h: Horizon, t: Long): String = when (h) {
+    Horizon.D1 -> scrubClockFmt
+    Horizon.D7, Horizon.D30 -> scrubDayFmt
+    else -> scrubDateFmt
+}.format(Date(t))
 
 // ---------------------------------------------------------------- Home
 
@@ -509,6 +524,7 @@ private fun changePct(state: AppState, last: com.irigoyen.btcalert.model.PriceSa
 /**
  * Smooth line chart of a [ChartSeries] with the live price appended as the final point.
  * Colour follows the direction over the timeframe; the path animates in when the timeframe changes.
+ * Touching the chart scrubs it: a crosshair snaps to the nearest sample and reads out its price.
  */
 @Composable
 private fun PriceChart(
@@ -526,6 +542,8 @@ private fun PriceChart(
     LaunchedEffect(horizon, series == null) {
         if (series != null) { reveal.snapTo(0f); reveal.animateTo(1f, tween(650)) }
     }
+    // Where the finger is, in px from the chart's left edge; null when nothing is touching it.
+    var scrubX by remember { mutableStateOf<Float?>(null) }
 
     Box(modifier, contentAlignment = Alignment.Center) {
         if (points.size < 2) {
@@ -545,6 +563,7 @@ private fun PriceChart(
         val minP = points.minOf { it.price }
         val maxP = points.maxOf { it.price }
         val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Ink.Faint, letterSpacing = 0.sp)
+        val readoutStyle = MaterialTheme.typography.labelLarge.copy(color = Ink.White)
         val measurer = rememberTextMeasurer()
         val hiText = remember(maxP) { "H ${usd(maxP)}" }
         val loText = remember(minP) { "L ${usd(minP)}" }
@@ -552,7 +571,31 @@ private fun PriceChart(
         // wide the window is stops a flat timeframe from looking like a crash.
         val spanText = remember(minP, maxP) { "span ${fmtChange((maxP - minP) / minP * 100).removePrefix("+")}" }
 
-        Canvas(Modifier.fillMaxSize()) {
+        val touch = Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                // The readout appears on touch-down, before any movement — but the chart lives in a
+                // scrolling list, so the gesture is only claimed once it reads horizontal. A vertical
+                // swipe that starts on the chart still scrolls the page.
+                val down = awaitFirstDown(requireUnconsumed = false)
+                scrubX = down.position.x
+                var owned = false
+                while (true) {
+                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    if (!owned) {
+                        if (change.isConsumed) break // the list took it for a scroll
+                        val dx = abs(change.position.x - down.position.x)
+                        val dy = abs(change.position.y - down.position.y)
+                        if (dy > viewConfiguration.touchSlop && dy > dx) break
+                        owned = dx > viewConfiguration.touchSlop
+                    }
+                    scrubX = change.position.x
+                    if (owned) change.consume()
+                }
+                scrubX = null
+            }
+        }
+        Canvas(Modifier.fillMaxSize().then(touch)) {
             val w = size.width
             val h = size.height
             val padTop = 14.dp.toPx()
@@ -607,13 +650,50 @@ private fun PriceChart(
                 drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(ex, ey))
                 drawCircle(Ink.Black, radius = 1.2.dp.toPx(), center = Offset(ex, ey))
             }
-            // High / low labels, tucked into the corners so they never collide with the line ends.
-            val hi = measurer.measure(hiText, labelStyle)
-            val lo = measurer.measure(loText, labelStyle)
-            drawText(hi, topLeft = Offset(0f, 0f))
-            drawText(lo, topLeft = Offset(0f, h - lo.size.height))
-            val sp = measurer.measure(spanText, labelStyle)
-            drawText(sp, topLeft = Offset(w - sp.size.width - padRight, h - sp.size.height))
+            val plotW = w - padRight
+            val touched = scrubX?.let { sx ->
+                val t = t0 + ((sx.coerceIn(0f, plotW) / plotW) * span).toLong()
+                points.minBy { abs(it.time - t) }
+            }
+            if (touched == null) {
+                // High / low labels, tucked into the corners so they never collide with the line ends.
+                val hi = measurer.measure(hiText, labelStyle)
+                val lo = measurer.measure(loText, labelStyle)
+                drawText(hi, topLeft = Offset(0f, 0f))
+                drawText(lo, topLeft = Offset(0f, h - lo.size.height))
+                val sp = measurer.measure(spanText, labelStyle)
+                drawText(sp, topLeft = Offset(w - sp.size.width - padRight, h - sp.size.height))
+            } else {
+                // The corner labels stand down while scrubbing: the readout answers the same
+                // question more precisely, and there is no room for both at the top of the box.
+                val tx = x(touched.time)
+                val ty = y(touched.price)
+                drawLine(
+                    color = Ink.Outline, start = Offset(tx, 0f), end = Offset(tx, h),
+                    strokeWidth = 1.dp.toPx(),
+                )
+                drawCircle(lineColor.copy(alpha = 0.22f), radius = 8.dp.toPx(), center = Offset(tx, ty))
+                drawCircle(lineColor, radius = 3.5.dp.toPx(), center = Offset(tx, ty))
+                drawCircle(Ink.Black, radius = 1.4.dp.toPx(), center = Offset(tx, ty))
+
+                val priceText = measurer.measure(usd2(touched.price), readoutStyle)
+                val pct = (touched.price - first) / first * 100.0
+                val whenText = measurer.measure(
+                    "${scrubTime(horizon, touched.time)} · ${fmtChange(pct)}", labelStyle,
+                )
+                val padX = 8.dp.toPx()
+                val padY = 5.dp.toPx()
+                val boxW = maxOf(priceText.size.width, whenText.size.width) + padX * 2
+                val boxH = priceText.size.height + whenText.size.height + padY * 2
+                // Follows the crosshair but never leaves the box, so the value stays readable at both ends.
+                val bx = (tx - boxW / 2f).coerceIn(0f, (w - boxW).coerceAtLeast(0f))
+                drawRoundRect(
+                    color = Ink.SurfaceHigh, topLeft = Offset(bx, 0f),
+                    size = Size(boxW, boxH), cornerRadius = CornerRadius(8.dp.toPx()),
+                )
+                drawText(priceText, topLeft = Offset(bx + padX, padY))
+                drawText(whenText, topLeft = Offset(bx + padX, padY + priceText.size.height))
+            }
         }
     }
 }

@@ -22,10 +22,10 @@ import java.util.concurrent.TimeUnit
  * Granularity is chosen per timeframe so every chart lands at roughly 150–300 points —
  * dense enough to look like a smooth curve, sparse enough to stay light:
  *
- *   1h  → 1-min candles     (60 pts,  1 call)   refresh 1 min
  *   24h → 5-min candles     (288 pts, 1 call)   refresh 5 min
  *   7d  → 1-hour candles    (168 pts, 1 call)   refresh 1 h
  *   30d → 6-hour candles    (120 pts, 1 call)   refresh 6 h
+ *   6m  → daily candles     (182 pts, 1 call)   refresh 24 h
  *   1y  → daily candles     (365 pts, 2 calls)  refresh 24 h
  *   5y  → daily, 1 in 7 kept (261 pts, 7 calls) refresh 24 h
  */
@@ -34,10 +34,10 @@ object ChartData {
     private data class Plan(val granularitySec: Long, val keepEvery: Int, val refreshMs: Long)
 
     private fun plan(h: Horizon): Plan = when (h) {
-        Horizon.H1 -> Plan(60, 1, 60_000L)
         Horizon.D1 -> Plan(300, 1, 5 * 60_000L)
         Horizon.D7 -> Plan(3600, 1, 60 * 60_000L)
         Horizon.D30 -> Plan(21600, 1, 6 * 60 * 60_000L)
+        Horizon.M6 -> Plan(86400, 1, 24 * 60 * 60_000L)
         Horizon.Y1 -> Plan(86400, 1, 24 * 60 * 60_000L)
         Horizon.Y5 -> Plan(86400, 7, 24 * 60 * 60_000L)
     }
