@@ -444,7 +444,7 @@ private fun PriceHero(state: AppState, chartHorizon: Horizon, onSelectHorizon: (
             live = last,
             horizon = chartHorizon,
             offline = state.lastFetchError?.kind?.isConnectivity == true,
-            modifier = Modifier.fillMaxWidth().height(150.dp),
+            modifier = Modifier.fillMaxWidth().height(178.dp),
         )
         val err = state.lastFetchError
         Spacer(Modifier.height(12.dp))
@@ -603,8 +603,10 @@ private fun PriceChart(
         Canvas(Modifier.fillMaxSize().then(touch)) {
             val w = size.width
             val h = size.height
-            val padTop = 14.dp.toPx()
-            val padBottom = 14.dp.toPx()
+            // Room for a price label outside each extreme without squeezing the plot: the box
+            // grew by the same 28 dp these reserve.
+            val padTop = 28.dp.toPx()
+            val padBottom = 28.dp.toPx()
             val padRight = 4.dp.toPx()
             val t0 = points.first().time
             val t1 = points.last().time
@@ -670,24 +672,25 @@ private fun PriceChart(
                 val spanAt = Offset(w - sp.size.width - padRight, h - sp.size.height)
                 drawText(sp, topLeft = spanAt)
 
-                // The price at each extreme, beside its dot. Alongside rather than above: the
-                // 14 dp of top padding has no room for a line of text over the peak, and a label
-                // centred on the dot's own y needs none.
+                // The price at each extreme, on the outside of its dot — above the high, below
+                // the low. No point in the series can sit above the maximum or below the minimum,
+                // so that strip is clear whatever the shape. Beside the dot is not: on a flat
+                // window the line runs level straight through the label.
                 if (reveal.value >= 1f) {
                     val spanRect = Rect(spanAt, Size(sp.size.width.toFloat(), sp.size.height.toFloat()))
-                    val gap = 7.dp.toPx()
-                    for ((pt, tint) in listOf(hiPoint to Ink.Up, loPoint to Ink.Down)) {
+                    val gap = 5.dp.toPx()
+                    for ((pt, tint, above) in listOf(Triple(hiPoint, Ink.Up, true), Triple(loPoint, Ink.Down, false))) {
                         val t = measurer.measure(usdShort(pt.price), extremeStyle.copy(color = tint.copy(alpha = 0.9f)))
                         val tw = t.size.width.toFloat()
                         val th = t.size.height.toFloat()
-                        val dx = x(pt.time)
-                        // Right of the dot, flipping left when that would run off the edge.
-                        val lx = (if (dx + gap + tw > w) dx - gap - tw else dx + gap)
-                            .coerceIn(0f, (w - tw).coerceAtLeast(0f))
-                        var ly = y(pt.price) - th / 2f
-                        // "span" owns the bottom-right corner; lift the low above it rather than
-                        // letting two numbers sit on top of each other.
-                        if (Rect(Offset(lx, ly), Size(tw, th)).overlaps(spanRect)) ly = spanRect.top - th
+                        val dy = y(pt.price)
+                        var lx = (x(pt.time) - tw / 2f).coerceIn(0f, (w - tw).coerceAtLeast(0f))
+                        val ly = if (above) dy - gap - th else dy + gap
+                        // "span" owns the bottom-right corner; slide the low clear of it rather
+                        // than letting two numbers sit on top of each other.
+                        if (Rect(Offset(lx, ly), Size(tw, th)).overlaps(spanRect)) {
+                            lx = (spanRect.left - gap - tw).coerceAtLeast(0f)
+                        }
                         drawText(t, topLeft = Offset(lx, ly.coerceIn(0f, h - th)))
                     }
                 }
