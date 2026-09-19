@@ -67,10 +67,10 @@ data class Settings(
 
 /** Look-back horizons shown as change pills on the home screen. */
 enum class Horizon(val label: String, val minutes: Long) {
-    H1("1h", 60),
     D1("24h", 24 * 60),
     D7("7d", 7 * 24 * 60),
     D30("30d", 30 * 24 * 60),
+    M6("6m", 182L * 24 * 60),
     Y1("1y", 365L * 24 * 60),
     Y5("5y", 1826L * 24 * 60);
 

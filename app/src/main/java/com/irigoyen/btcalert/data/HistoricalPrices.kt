@@ -29,8 +29,8 @@ object HistoricalPrices {
         .build()
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Horizons that need a remote lookup (1h always comes from local history). */
-    val remoteHorizons = listOf(Horizon.D1, Horizon.D7, Horizon.D30, Horizon.Y1, Horizon.Y5)
+    /** Every horizon needs a remote lookup: local history only reaches back 48 h. */
+    val remoteHorizons = Horizon.entries
 
     fun isStale(ref: RefPrice?, now: Long): Boolean = ref == null || now - ref.fetchedAt > REFRESH_MS
 

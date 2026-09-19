@@ -23,7 +23,7 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 **Test notification** — in the rule editor, one tap sends the exact notification that rule would produce, using the live price, so you can see and hear it before you rely on it.
 
-**Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **1h · 24h · 7d · 30d · 1y · 5y** that switch the chart timeframe (1-min candles for 1h, 5-min for 24h, hourly for 7d, 6-hourly for 30d, daily for 1y, weekly for 5y).
+**Live price & chart** — a pulsing dot next to the ticker while the price is current, a big animated price that refreshes every 10 seconds while the app is open, with pull-to-refresh, a smooth price chart, and tappable change pills for **24h · 7d · 30d · 6m · 1y · 5y** that switch the chart timeframe (5-min candles for 24h, hourly for 7d, 6-hourly for 30d, daily for 6m and 1y, weekly for 5y). Touch and hold anywhere on the chart to read the price at that point, and drag to scrub along it.
 
 **Block card** — under the price: the current block height with a translucent cube, when the next block is due, and the block's txs, fee and pool. "tick tock next block" builds itself a word at a time beside the height. The block number links to that block on mempool.space.
 
@@ -50,7 +50,7 @@ A small, free, open-source Android app that sends you a notification when Bitcoi
 
 ## Where the prices come from
 
-Free, keyless public endpoints, tried in order until one answers: **Coinbase → CoinGecko → Kraken → Binance**. The home screen shows which one answered last. The 7d/30d/1y/5y change pills use hourly candles from Coinbase Exchange, refreshed every 30 minutes; the 1h and 24h pills use the app's own samples once it has enough of them.
+Free, keyless public endpoints, tried in order until one answers: **Coinbase → CoinGecko → Kraken → Binance**. The home screen shows which one answered last. The change pills read the chart series when it's loaded, and otherwise hourly candles from Coinbase Exchange refreshed every 30 minutes.
 
 ## Privacy
 
@@ -84,7 +84,7 @@ app/src/main/java/com/irigoyen/btcalert/
   model/FetchError.kt       pure classification of a failed fetch into what to tell the user
   data/PriceFetcher.kt      spot price from four free APIs with fallback
   data/Connectivity.kt      device network state: offline / no internet / online
-  data/HistoricalPrices.kt  7d/30d/1y/5y reference prices from Coinbase Exchange hourly candles
+  data/HistoricalPrices.kt  per-horizon reference prices from Coinbase Exchange hourly candles
   data/ChartData.kt         chart series per timeframe (granularity chosen for ~150–300 points)
   data/ChainData.kt         block height, fees, mempool and difficulty from mempool.space
   model/ChainInfo.kt        chain state + pure pace/copy helpers (tested)
