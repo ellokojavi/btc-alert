@@ -21,7 +21,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # packages: the action's default is "tools platform-tools", and Google has removed the
+      # long-deprecated "tools" package from the SDK repository — asking for it fails the step
+      # outright ("Failed to find package 'tools'"). platform-tools is all the build needs; the
+      # runner image already carries platform 35 and build-tools 35.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v4
 
