@@ -61,7 +61,9 @@ Data flows one way: **fetch → evaluate → notify → persist → UI reads sta
 
 - **Chart y-axis is auto-zoomed** to the window's min/max, so a 0.08 % hour fills a third
   of the plot. That's why there's a dashed baseline at the opening price and a "span N%"
-  label. Don't remove them without replacing the reference they provide.
+  label. Don't remove them without replacing the reference they provide. The H/L corner labels
+  are paired with dots on the line at the actual extremes: the label gives the value, the dot
+  gives the position, which the zoomed axis alone can't.
 - **Coinbase candles cap at 300 per request.** `ChartData` chunks accordingly. Granularity
   per timeframe targets ~150–300 points: 24h→300 s, 7d→3600 s, 30d→21600 s, 6m→86400 s,
   1y→86400 s, 5y→86400 s keeping 1 in 7. Only 60/300/900/3600/21600/86400 are valid.

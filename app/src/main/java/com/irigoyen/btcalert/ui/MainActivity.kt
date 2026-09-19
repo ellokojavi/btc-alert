@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
@@ -562,6 +563,8 @@ private fun PriceChart(
         val lineColor = if (lastP >= first) Ink.Up else Ink.Down
         val minP = points.minOf { it.price }
         val maxP = points.maxOf { it.price }
+        val hiPoint = remember(points) { points.maxBy { it.price } }
+        val loPoint = remember(points) { points.minBy { it.price } }
         val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Ink.Faint, letterSpacing = 0.sp)
         val readoutStyle = MaterialTheme.typography.labelLarge.copy(color = Ink.White)
         val measurer = rememberTextMeasurer()
@@ -645,6 +648,11 @@ private fun PriceChart(
                 drawPath(line, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
             if (reveal.value >= 1f) {
+                // Peak and trough of the window. The corner labels say what they were; these say
+                // when. Deliberately dimmer and smaller than the end dot — annotation, not data.
+                extremeDot(Offset(x(hiPoint.time), y(hiPoint.price)), Ink.Up)
+                extremeDot(Offset(x(loPoint.time), y(loPoint.price)), Ink.Down)
+
                 val ex = x(t1); val ey = y(lastP)
                 drawCircle(lineColor.copy(alpha = 0.25f), radius = 7.dp.toPx(), center = Offset(ex, ey))
                 drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(ex, ey))
@@ -696,6 +704,12 @@ private fun PriceChart(
             }
         }
     }
+}
+
+/** The high/low marker: a soft halo and a small core, sitting on the line without competing with it. */
+private fun DrawScope.extremeDot(center: Offset, color: Color) {
+    drawCircle(color.copy(alpha = 0.16f), radius = 5.dp.toPx(), center = center)
+    drawCircle(color.copy(alpha = 0.8f), radius = 2.5.dp.toPx(), center = center)
 }
 
 /** Compact, fixed-width-friendly percent: +4.2%  −12.8%  +156%  +1.2k% */
